@@ -1,0 +1,92 @@
+#login-container {
+  width: 300px;
+  margin: 50px auto;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+  box-shadow: 2px 2px 12px rgba(0,0,0,0.1);
+  font-family: Arial, sans-serif;
+}
+
+#login-title {
+  text-align: center;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+#login-admno,
+#login-password {
+  width: 100%;
+  padding: 10px 8px;
+  margin: 8px 0;
+  border: 1px solid #aaa;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font-size: 14px;
+  transition: border-color 0.3s ease;
+}
+
+#login-admno:focus,
+#login-password:focus {
+  border-color: #007BFF;
+  outline: none;
+}
+
+#login-submit {
+  width: 100%;
+  padding: 10px;
+  margin-top: 15px;
+  background-color: #007BFF;
+  border: none;
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+#login-submit:hover {
+  background-color: #0056b3;
+}
+
+
+.user-type-toggle {
+  display: flex;
+  margin-bottom: 15px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #3498db;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: white;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.toggle-btn.active {
+  background: #3498db;
+  color: white;
+}
+
+.login-footer {
+  margin-top: 15px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.login-footer a {
+  color: #3498db;
+  text-decoration: none;
+}
+
+.login-footer a:hover {
+  text-decoration: underline;
+}
