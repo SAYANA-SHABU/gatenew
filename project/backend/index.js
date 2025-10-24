@@ -3,12 +3,13 @@ const app = express()
 const QRCode = require('qrcode');
 app.use(express.json());
 const Student = require('./models/student'); // Make sure this path is correct
-const Tutor = require('./models/tutor');
+const Tutor = require('./models/Tutor');
+const GatePass = require("./models/Gatepass");
 var cors = require('cors')
 app.use(cors());
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
-const connectDB = require('./connection')
+const connectDB = require('./connection');
 connectDB
 
 const storage = multer.memoryStorage(); // Or use diskStorage if saving to disk
@@ -58,76 +59,229 @@ app.post('/login', async (req, res) => {
 });
 
 // Form fill route (purpose + date)
+
+
 app.post('/form-fill/:id', async (req, res) => {
-  const { id } = req.params;
-  const { purpose, date, returnTime } = req.body;
+  const { id } = req.params; // main student id
+  const { purpose, date, returnTime, groupMembers } = req.body;
 
   try {
-    const updatedStudent = await Student.findByIdAndUpdate(
-      id,
-      { purpose, date, returnTime },
-      { new: true } // Return the updated document
-    );
+    const mainStudent = await Student.findById(id);
+    if (!mainStudent) return res.status(404).json({ message: 'Main student not found' });
 
-    if (!updatedStudent) {
-      return res.status(404).send({ message: 'Student not found' });
+    // create gate pass record (store purpose/date/returnTime/groupMembers here)
+    const gp = new GatePass({
+      studentId: mainStudent._id,
+      purpose,
+      date,
+      returnTime,
+      groupMembers: groupMembers || [],
+      status: 'approved'
+    });
+    await gp.save();
+
+    // set groupId for main student
+    mainStudent.groupId = gp._id;
+    mainStudent.purpose = purpose;
+    mainStudent.date = date;
+    mainStudent.returnTime = returnTime;
+    await mainStudent.save();
+
+    // for each member in groupMembers (submitted from frontend),
+    // if a Student with that admNo exists, set its groupId; else optionally create placeholder
+    if (groupMembers && groupMembers.length) {
+      for (const member of groupMembers) {
+        const existing = await Student.findOne({ admNo: member.admissionNo || member.admNo || member.admNo });
+        if (existing) {
+          existing.groupId = gp._id;
+          await existing.save();
+        } else {
+          // optional: create placeholder student record so verification page can show name/admNo/dept consistently
+          await Student.create({
+            name: member.name || 'Unknown',
+            admNo: Number(member.admissionNo || member.admNo || 0),
+            dept: member.dept || '',
+            groupId: gp._id
+          });
+        }
+      }
     }
 
-    res.send({
-      message: 'Form updated successfully',
-      student: updatedStudent
-    });
-  } catch (error) {
-    console.error('Form update error:', error);
-    res.status(500).send({
-      message: 'Form update failed',
-      error: error.message
-    });
+    return res.status(200).json({ message: 'GatePass created', gatePass: gp, student: mainStudent });
+  } catch (err) {
+    console.error('form-fill error', err);
+    return res.status(500).json({ message: 'Form fill failed', error: err.message });
   }
 });
 
-// QR Code generation route - UPDATED
-app.post('/generate-qr/:id', async (req, res) => {
+
+
+
+app.post("/generate-qr/:studentId", async (req, res) => {
   try {
-    const student = await Student.findById(req.params.id);
-    
-    if (!student) {
-      return res.status(404).send({ message: 'Student not found' });
+    const { studentId } = req.params;
+    const student = await Student.findById(studentId);
+
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    const verifyUrl = `http://localhost:5000/gatepass/${studentId}`;
+    const qrImage = await QRCode.toDataURL(verifyUrl);
+
+    res.json({ qrImage, studentData: student });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "QR generation failed" });
+  }
+});
+
+
+
+
+
+app.get('/gatepass/:studentId', async (req, res) => {
+  try {
+    const studentId = req.params.studentId;
+    const student = await Student.findById(studentId);
+    if (!student) return res.status(404).send('<h2>Student not found</h2>');
+
+    // Find gatepass: prefer student's groupId, else a gatepass created by this student
+    let gatePass = null;
+    if (student.groupId) {
+      gatePass = await GatePass.findById(student.groupId);
     }
-    
-    // Convert image buffer to base64 if exists
-    let imageBase64 = null;
-    if (student.image) {
-      imageBase64 = student.image.toString('base64');
+    if (!gatePass) {
+      gatePass = await GatePass.findOne({ studentId: student._id });
     }
-    
-    // Create student data object for QR code
-    const studentData = {
+    if (!gatePass) {
+      gatePass = {
+        _id: null,
+        purpose: student.purpose || 'N/A',
+        date: student.date || null,
+        returnTime: student.returnTime || null,
+        groupMembers: []
+      };
+    }
+
+    // Build members list
+    const members = [];
+    members.push({
+      _id: student._id,
       name: student.name,
       admNo: student.admNo,
       dept: student.dept,
       sem: student.sem,
-      purpose: student.purpose,
-      date: student.date,
-      returnTime: student.returnTime,
-      image: imageBase64
-    };
-    
-    // Stringify the data for QR code
-    const qrData = JSON.stringify(studentData);
-    
-    // Generate QR code
-    const qrImage = await QRCode.toDataURL(qrData);
-    
-    res.send({ 
-      qrImage,
-      studentData // Optional: send the data directly too
+      image: student.image ? `data:image/jpeg;base64,${student.image.toString('base64')}` : null,
+      verified: false
     });
-  } catch (error) {
-    console.error('QR generation error:', error);
-    res.status(500).send({ message: 'QR generation failed', error: error.message });
+
+    for (const gm of gatePass.groupMembers || []) {
+      const admNo = gm.admissionNo || gm.admNo || gm.adm;
+      let memberDoc = null;
+      if (admNo) memberDoc = await Student.findOne({ admNo: Number(admNo) });
+
+      members.push({
+        _id: memberDoc ? memberDoc._id : ('new-' + (admNo || gm.name)),
+        name: gm.name || (memberDoc && memberDoc.name) || 'Unknown',
+        admNo: admNo || (memberDoc && memberDoc.admNo) || '',
+        dept: gm.dept || (memberDoc && memberDoc.dept) || '',
+        sem: (memberDoc && memberDoc.sem) || gm.sem || '-',
+        image: memberDoc && memberDoc.image ? `data:image/jpeg;base64,${memberDoc.image.toString('base64')}` : null,
+        verified: false // Always false on page load
+      });
+    }
+
+    // Build table rows with checkboxes
+    const tableRows = members.map(m => `
+      <tr>
+        <td><img src="${m.image || 'https://via.placeholder.com/50'}" style="width:50px;height:50px;border-radius:4px;object-fit:cover;"></td>
+        <td>${m.name}</td>
+        <td>${m.admNo}</td>
+        <td>${m.dept}</td>
+        <td>${m.sem}</td>
+        <td>${gatePass.purpose || 'N/A'}</td>
+        <td>${gatePass.date ? new Date(gatePass.date).toLocaleString() : 'N/A'}</td>
+        <td>${gatePass.returnTime || 'N/A'}</td>
+        <td>
+          <input type="checkbox" 
+                 id="verify-${m._id}" 
+                 name="verify-${m._id}" 
+                 data-student-id="${m._id}" 
+                 autocomplete="off">
+        </td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Gate Pass Verification</title>
+        <style>
+          body{font-family:Arial;background:#f0f4f8;padding:30px;display:flex;justify-content:center}
+          .container{background:#fff;padding:25px;border-radius:12px;box-shadow:0 5px 20px rgba(0,0,0,0.15);max-width:1200px;width:100%}
+          table{width:100%;border-collapse:collapse}
+          th,td{padding:10px;text-align:left;border-bottom:1px solid #ddd}
+          th{background:#f8f9fa}
+          img{display:block}
+          button{padding:10px 20px;border:none;background:#3498db;color:#fff;border-radius:6px;cursor:pointer;margin-top:15px}
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h2>Gate Pass Verification</h2>
+          <p><strong>Purpose:</strong> ${gatePass.purpose || 'N/A'}</p>
+          <p><strong>Date:</strong> ${gatePass.date ? new Date(gatePass.date).toLocaleString() : 'N/A'}</p>
+          <p><strong>Return Time:</strong> ${gatePass.returnTime || 'N/A'}</p>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Photo</th><th>Name</th><th>Admission No</th><th>Department</th><th>Semester</th><th>Purpose</th><th>Date</th><th>Return Time</th><th>Verified</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+
+          <button id="submitBtn">Submit Verifications</button>
+        </div>
+
+        <script>
+          document.getElementById('submitBtn').addEventListener('click', async () => {
+            const verifiedIds = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.dataset.studentId);
+            if (!verifiedIds.length) return alert('Select at least one student to verify');
+            try {
+              const res = await fetch('http://localhost:5000/verify-students', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ studentIds: verifiedIds })
+              });
+              if (res.ok) { 
+                alert('Students verified successfully'); 
+                location.reload(); 
+              } else { 
+                alert('Verification failed'); 
+              }
+            } catch (err) { 
+              alert('Server error'); 
+            }
+          });
+        </script>
+      </body>
+      </html>
+    `;
+    res.send(html);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('<h2>Server Error</h2>');
   }
 });
+
+
+
+
 
 // Get student by ID
 app.get('/student/:id', async (req, res) => {
@@ -318,6 +472,27 @@ app.get('/admin/gate-passes', async (req, res) => {
     res.status(500).send({ message: 'Error fetching gate passes', error });
   }
 });
+
+
+
+
+
+app.post('/verify-students', async (req, res) => {
+  const { studentIds } = req.body;
+  try {
+    await Student.updateMany(
+      { _id: { $in: studentIds } },
+      { verified: true }
+    );
+    res.status(200).json({ message: 'Students verified successfully' });
+  } catch (error) {
+    console.error('Verification error:', error);
+    res.status(500).json({ message: 'Verification failed', error: error.message });
+  }
+});
+
+
+
 
 app.listen(5000, () => {
   console.log("Port is running ")
