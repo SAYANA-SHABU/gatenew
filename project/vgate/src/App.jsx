@@ -67,6 +67,7 @@ function App() {
         <Route path="/tutor/register" element={<TutorRegisterForm />} />
         <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/admin/dashboard" element={<AdminDashboard />} />
+      <Route path="/gatepass-form/:id" element={<GatePassForm />} />
       </Routes>
       
     </Router>
