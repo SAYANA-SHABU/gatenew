@@ -113,62 +113,138 @@ useEffect(() => {
     return Object.keys(errs).length === 0;
   };
 
-    const handleSubmit = async (e) => {
-    e.preventDefault();
+  //   const handleSubmit = async (e) => {
+  //   e.preventDefault();
     
-    if (!validate()) return;
+  //   if (!validate()) return;
 
-    try {
-      const formDataToSend = {
-        purpose: formData.reason,
-        date: new Date().toISOString(),
-        returnTime: formData.isReturning ? formData.returnTime : null
-      };
+  //   try {
+  //     const formDataToSend = {
+  //       purpose: formData.reason,
+  //       date: new Date().toISOString(),
+  //       returnTime: formData.isReturning ? formData.returnTime : null
+  //     };
 
-      const response = await axios.post(`http://localhost:5000/form-fill/${id}`, formDataToSend);
-      setStudentData(response.data.student); // Save the student data from response
-      setSubmitted(true);
-      console.log("Submitted Data:", formData);
-    } catch (error) {
-      console.error("Submission error:", error);
-      alert(`Form submission failed: ${error.response?.data?.message || error.message}`);
-    }
+  //     const response = await axios.post(`http://localhost:5000/form-fill/${id}`, formDataToSend);
+  //     setStudentData(response.data.student); // Save the student data from response
+  //     setSubmitted(true);
+  //     console.log("Submitted Data:", formData);
+  //   } catch (error) {
+  //     console.error("Submission error:", error);
+  //     alert(`Form submission failed: ${error.response?.data?.message || error.message}`);
+  //   }
+  // };
+
+  // if (submitted && studentData) {
+  //   return (
+  //     <div style={{ maxWidth: "600px", margin: "auto", textAlign: "center" }}>
+  //       <h2>Gate Pass Approved</h2>
+  //       <div style={{ border: "1px solid #ccc", padding: "20px", borderRadius: "10px" }}>
+  //         {/* Student Details */}
+  //         <div style={{ marginBottom: "20px" }}>
+  //           {studentData.image && (
+  //             <img 
+  //               src={`data:image/jpeg;base64,${studentData.image.toString('base64')}`} 
+  //               alt="Student" 
+  //               style={{ width: "100px", height: "100px", borderRadius: "50%" }}
+  //             />
+  //           )}
+  //           <h3>{studentData.name}</h3>
+  //           <p>Admission No: {studentData.admNo}</p>
+  //           <p>Department: {studentData.dept}</p>
+  //           <p>Purpose: {formData.reason}</p>
+  //           {formData.isReturning && <p>Return Time: {formData.returnTime}</p>}
+  //         </div>
+          
+  //         {/* QR Code */}
+  //         <QRCodeDisplay studentId={id} />
+          
+  //         <button 
+  //           onClick={() => setSubmitted(false)}
+  //           style={{ marginTop: "20px" }}
+  //         >
+  //           Back to Form
+  //         </button>
+  //       </div>
+  //     </div>
+  //   );
+  // }
+
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+
+  if (!validate()) return;
+
+  const formDataToSend = {
+    purpose: formData.reason,
+    date: new Date().toISOString(),
+    returnTime: formData.isReturning ? formData.returnTime : null,
+    groupMembers: formData.isGroup ? formData.groupMembers : [] // ✅ send if group
   };
 
-  if (submitted && studentData) {
-    return (
-      <div style={{ maxWidth: "600px", margin: "auto", textAlign: "center" }}>
-        <h2>Gate Pass Approved</h2>
-        <div style={{ border: "1px solid #ccc", padding: "20px", borderRadius: "10px" }}>
-          {/* Student Details */}
-          <div style={{ marginBottom: "20px" }}>
-            {studentData.image && (
-              <img 
-                src={`data:image/jpeg;base64,${studentData.image.toString('base64')}`} 
-                alt="Student" 
-                style={{ width: "100px", height: "100px", borderRadius: "50%" }}
-              />
-            )}
-            <h3>{studentData.name}</h3>
-            <p>Admission No: {studentData.admNo}</p>
-            <p>Department: {studentData.dept}</p>
-            <p>Purpose: {formData.reason}</p>
-            {formData.isReturning && <p>Return Time: {formData.returnTime}</p>}
-          </div>
-          
-          {/* QR Code */}
-          <QRCodeDisplay studentId={id} />
-          
-          <button 
-            onClick={() => setSubmitted(false)}
-            style={{ marginTop: "20px" }}
-          >
-            Back to Form
-          </button>
-        </div>
-      </div>
-    );
+  console.log("Data being sent to backend:", formDataToSend);
+
+  try {
+    const response = await axios.post(`http://localhost:5000/form-fill/${id}`, formDataToSend);
+    console.log("Server response:", response.data);
+    setStudentData(response.data.student,response.data.gatePass );
+    setSubmitted(true);
+  } catch (error) {
+    console.error("Submission error:", error);
+    alert(`Form submission failed: ${error.response?.data?.message || error.message}`);
   }
+};
+
+
+
+
+
+if (submitted && studentData) {
+  return (
+    <div style={{ maxWidth: "600px", margin: "auto", textAlign: "center" }}>
+      <h2>Gate Pass Approved</h2>
+      <div style={{ border: "1px solid #ccc", padding: "20px", borderRadius: "10px" }}>
+        <div style={{ marginBottom: "20px" }}>
+          {studentData.image && (
+            <img
+              src={`data:image/jpeg;base64,${studentData.image}`}
+              alt="Student"
+              style={{ width: "100px", height: "100px", borderRadius: "50%" }}
+            />
+          )}
+          <h3>{studentData.name}</h3>
+          <p>Admission No: {studentData.admNo}</p>
+          <p>Department: {studentData.dept}</p>
+          <p>Purpose: {studentData.gatePass?.purpose || studentData.purpose}</p>
+          {studentData.returnTime && <p>Return Time: {studentData.returnTime}</p>}
+
+
+       </div>
+
+        {/* ✅ QR Code Section */}
+        <QRCodeDisplay studentId={id} studentData={studentData} />
+
+        <button
+          onClick={() => setSubmitted(false)}
+          style={{ marginTop: "20px" }}
+        >
+          Back to Form
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
 
   return (
     <div >
@@ -310,6 +386,10 @@ useEffect(() => {
 };
 
 export default GatePassForm;
+
+
+
+
 
 
 
