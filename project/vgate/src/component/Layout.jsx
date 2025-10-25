@@ -6,7 +6,7 @@ import collegeLogo from "../assets/collegeLogo.png";
 const Layout = () => {
   const carouselImages = [
     "https://cache.careers360.mobi/media/presets/720X480/colleges/social-media/media-gallery/14090/2018/9/19/Campus%20View%20Vimala%20College%20Thrissur_Campus-view.jpg",
-    "https://scontent.fcok6-2.fna.fbcdn.net/v/t1.6435-9/79537500_105576504278967_3131303983696576512_n.jpg?_nc_cat=111&ccb=1-7&_nc_sid=cc71e4&_nc_ohc=4W_loCyLba4Q7kNvwEgufOy&_nc_oc=AdlcBH82EugFOkw1Lme1NW_DXlhq_nubURYM1xC_42ABW7C8uGTVxVdoDuR-jaWZg5o&_nc_zt=23&_nc_ht=scontent.fcok6-2.fna&_nc_gid=l2HCQEzDxr5_YKmAYSqnkw&oh=00_AfP3NzQNPZqSIo2QeedWI76xLWzxRL12Ul7eNnamIANZ7Q&oe=688A17B9",
+    "https://ik.imagekit.io/syustaging/SYU_PREPROD/COVER-IMAGE_iujbmHXoDt.webp?tr=w-3840",
     "https://www.sikshapedia.com/public/data/colleges/vimala-college-thrissur-kerala/vimala-college-thrissur-kerala-banner.webp"
   ];
   
@@ -21,6 +21,14 @@ const Layout = () => {
     }, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => (prev - 1 + carouselImages.length) % carouselImages.length);
+  };
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev + 1) % carouselImages.length);
+  };
 
   return (
     <Box sx={{
@@ -50,13 +58,13 @@ const Layout = () => {
         }}
       />
       
-      {/* Navigation Arrows */}
+      {/* Navigation Arrows - Moved BEFORE the overlay content */}
       <IconButton
         sx={{ 
           position: 'absolute', 
           left: isMobile ? 8 : 16, 
           top: '50%', 
-          zIndex: 2, 
+          zIndex: 3, // Increased z-index to be above everything
           color: 'white',
           backgroundColor: 'rgba(0,0,0,0.5)',
           '&:hover': {
@@ -65,7 +73,7 @@ const Layout = () => {
           width: isMobile ? 40 : 48,
           height: isMobile ? 40 : 48
         }}
-        onClick={() => setCurrentIndex((prev) => (prev - 1 + carouselImages.length) % carouselImages.length)}
+        onClick={handlePrev}
       >
         <ChevronLeft fontSize={isMobile ? "medium" : "large"} />
       </IconButton>
@@ -74,7 +82,7 @@ const Layout = () => {
           position: 'absolute', 
           right: isMobile ? 8 : 16, 
           top: '50%', 
-          zIndex: 2, 
+          zIndex: 3, // Increased z-index to be above everything
           color: 'white',
           backgroundColor: 'rgba(0,0,0,0.5)',
           '&:hover': {
@@ -83,7 +91,7 @@ const Layout = () => {
           width: isMobile ? 40 : 48,
           height: isMobile ? 40 : 48
         }}
-        onClick={() => setCurrentIndex((prev) => (prev + 1) % carouselImages.length)}
+        onClick={handleNext}
       >
         <ChevronRight fontSize={isMobile ? "medium" : "large"} />
       </IconButton>
@@ -96,9 +104,10 @@ const Layout = () => {
         transform: 'translate(-50%, -50%)',
         textAlign: 'center',
         color: 'white',
-        zIndex: 2,
+        zIndex: 2, // Lower z-index than arrows
         width: '100%',
-        px: 2
+        px: 2,
+        pointerEvents: 'none' // This prevents the overlay from intercepting clicks
       }}>
         <img 
           src={collegeLogo} 
