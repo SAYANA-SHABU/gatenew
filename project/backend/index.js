@@ -18,23 +18,32 @@ const upload = multer({ storage });
 app.post('/register', upload.single('image'), async (req, res) => {
   try {
     const { admNo, name, dept, sem, tutorName, phone, email, password } = req.body;
-    if (!req.body.admNo || !req.body.name) {
+    
+    // Validate required fields
+    if (!admNo || !name || !password) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
+
+    // Check if student already exists
+    const existingStudent = await Student.findOne({ admNo: Number(admNo) });
+    if (existingStudent) {
+      return res.status(400).json({ message: 'Student with this admission number already exists' });
+    }
+
     const student = new Student({
-      admNo,
+      admNo: Number(admNo),
       name,
       dept,
-      sem,
+      sem: Number(sem),
       tutorName,
-      phone,
+      phone: Number(phone),
       email,
       password,
-      image: req.file ? req.file.buffer : undefined, // Save as Buffer
+      image: req.file ? req.file.buffer : null, // Save as Buffer or null
     });
 
     await student.save();
-    res.status(201).json({ message: 'Registration successful' });
+    res.status(201).json({ message: 'Registration successful', studentId: student._id });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({
@@ -43,7 +52,6 @@ app.post('/register', upload.single('image'), async (req, res) => {
     });
   }
 });
-
 // Login route
 app.post('/login', async (req, res) => {
   const admNo = Number(req.body.admNo);
@@ -326,23 +334,57 @@ app.post('/gatepasses', async (req, res) => {
 // Tutor registration route
 app.post('/tutor/register', upload.single('image'), async (req, res) => {
   try {
+    
+    console.log("Tutor registration request received");
+    console.log("Request body:", req.body);
+    console.log("File:", req.file);
+
     const { empId, name, dept, email, password } = req.body;
 
+     if (!empId || !name || !dept || !email || !password) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    // Check if tutor already exists
+    const existingTutor = await Tutor.findOne({ empId });
+    if (existingTutor) {
+      return res.status(400).json({ message: 'Tutor with this employee ID already exists' });
+    }
+
+     const existingEmail = await Tutor.findOne({ email });
+    if (existingEmail) {
+      console.log("Tutor already exists with email:", email);
+      return res.status(400).json({ 
+        message: 'Tutor with this email already exists' 
+      });
+    }
+
     const tutor = new Tutor({
-      empId,
-      name,
-      dept,
-      email,
-      password,
-      image: req.file ? req.file.buffer : undefined,
+      empId: empId.trim(),
+      name: name.trim(),
+      dept: dept.trim(),
+      email: email.trim(),
+      password: password,
+      image: req.file ? req.file.buffer : null,
     });
 
+    console.log("Saving tutor to database...");
     await tutor.save();
-    res.send({ message: 'Tutor registered successfully' });
+    console.log("Tutor saved successfully");
+
+    res.status(201).json({ 
+      message: 'Tutor registered successfully', 
+      tutorId: tutor._id 
+    });
+    
   } catch (error) {
-    console.error('Tutor registration error:', error);
-    res.status(500).send({ message: 'Tutor registration failed', error });
-  }
+    console.error('Tutor registration error details:', error);
+    res.status(500).json({ 
+      message: 'Tutor registration failed', 
+      error: error.message,
+      stack: error.stack // Include stack trace for debugging
+    });
+  } 
 });
 
 // Tutor login route
@@ -491,7 +533,76 @@ app.post('/verify-students', async (req, res) => {
   }
 });
 
+// Get all tutors route
+app.get('/admin/tutors', async (req, res) => {
+  try {
+    const tutors = await Tutor.find({});
+    res.send(tutors);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching tutors', error });
+  }
+});
 
+// Get all gate passes with detailed information
+app.get('/admin/gate-passes-detailed', async (req, res) => {
+  try {
+    const passes = await GatePass.find({})
+      .populate('studentId', 'name admNo dept tutorName')
+      .sort({ date: -1 });
+    
+    const formattedPasses = passes.map(pass => ({
+      _id: pass._id,
+      admNo: pass.studentId?.admNo,
+      name: pass.studentId?.name,
+      dept: pass.studentId?.dept,
+      tutorName: pass.studentId?.tutorName,
+      purpose: pass.purpose,
+      date: pass.date,
+      returnTime: pass.returnTime,
+      status: pass.status,
+      groupMembers: pass.groupMembers
+    }));
+    
+    res.send(formattedPasses);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching gate passes', error });
+  }
+});
+
+// Delete student route
+app.delete('/admin/students/:id', async (req, res) => {
+  try {
+    await Student.findByIdAndDelete(req.params.id);
+    res.send({ message: 'Student deleted successfully' });
+  } catch (error) {
+    res.status(500).send({ message: 'Error deleting student', error });
+  }
+});
+
+// Delete tutor route
+app.delete('/admin/tutors/:id', async (req, res) => {
+  try {
+    await Tutor.findByIdAndDelete(req.params.id);
+    res.send({ message: 'Tutor deleted successfully' });
+  } catch (error) {
+    res.status(500).send({ message: 'Error deleting tutor', error });
+  }
+});
+
+// Update gate pass status
+app.put('/admin/gate-passes/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const updatedPass = await GatePass.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+    res.send({ message: 'Gate pass updated successfully', gatePass: updatedPass });
+  } catch (error) {
+    res.status(500).send({ message: 'Error updating gate pass', error });
+  }
+});
 
 
 app.listen(5000, () => {
