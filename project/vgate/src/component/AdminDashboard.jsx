@@ -5,112 +5,366 @@ import './AdminDashboard.css';
 
 const AdminDashboard = () => {
   const [students, setStudents] = useState([]);
+  const [tutors, setTutors] = useState([]);
   const [gatePasses, setGatePasses] = useState([]);
   const [activeTab, setActiveTab] = useState('students');
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const studentsRes = await axios.get('http://localhost:5000/admin/students');
-        setStudents(studentsRes.data);
-        
-        const passesRes = await axios.get('http://localhost:5000/admin/gate-passes');
-        setGatePasses(passesRes.data);
-      } catch (err) {
-        console.error('Error fetching data:', err);
-      }
-    };
-    
     fetchData();
   }, []);
 
-  const handleLogout = () => {
-    navigate('/');
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [studentsRes, gatePassesRes] = await Promise.all([
+        axios.get('http://localhost:5000/admin/students'),
+        axios.get('http://localhost:5000/admin/gate-passes')
+      ]);
+      
+      setStudents(studentsRes.data);
+      setGatePasses(gatePassesRes.data);
+      
+      // Fetch tutors data - you'll need to create this endpoint
+      try {
+        const tutorsRes = await axios.get('http://localhost:5000/admin/tutors');
+        setTutors(tutorsRes.data);
+      } catch (err) {
+        console.error('Error fetching tutors:', err);
+        setTutors([]);
+      }
+    } catch (err) {
+      console.error('Error fetching data:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // Add this endpoint to your backend (index.js)
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    navigate('/admin-login');
+  };
+
+  const filteredStudents = students.filter(student =>
+    student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.admNo?.toString().includes(searchTerm) ||
+    student.dept?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredTutors = tutors.filter(tutor =>
+    tutor.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    tutor.empId?.toString().includes(searchTerm) ||
+    tutor.dept?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    tutor.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredGatePasses = gatePasses.filter(pass =>
+    pass.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    pass.admNo?.toString().includes(searchTerm) ||
+    pass.dept?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    pass.purpose?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const getSearchPlaceholder = () => {
+    switch (activeTab) {
+      case 'students':
+        return 'Search students by name, admission no, department, or email...';
+      case 'tutors':
+        return 'Search tutors by name, employee ID, department, or email...';
+      case 'gatepasses':
+        return 'Search gate passes by name, admission no, department, or purpose...';
+      default:
+        return 'Search...';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="admin-dashboard">
+        <div className="loading-spinner">
+          <div className="spinner"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-dashboard">
       <header className="admin-header">
         <h1>Admin Dashboard</h1>
-        <button onClick={handleLogout} className="logout-button">Logout</button>
+        <div className="header-actions">
+          <span className="welcome-text">Welcome, Administrator</span>
+          <button onClick={handleLogout} className="logout-button">
+            Logout
+          </button>
+        </div>
       </header>
-      
+
+      <div className="dashboard-stats">
+        <div className="stat-card">
+          <h3 className="stat-number">{students.length}</h3>
+          <p className="stat-label">Total Students</p>
+        </div>
+        <div className="stat-card">
+          <h3 className="stat-number">{tutors.length}</h3>
+          <p className="stat-label">Registered Tutors</p>
+        </div>
+        <div className="stat-card">
+          <h3 className="stat-number">{gatePasses.length}</h3>
+          <p className="stat-label">Gate Pass Requests</p>
+        </div>
+        <div className="stat-card">
+          <h3 className="stat-number">
+            {students.filter(s => s.verified).length}
+          </h3>
+          <p className="stat-label">Verified Students</p>
+        </div>
+      </div>
+
       <div className="admin-tabs">
         <button 
           className={activeTab === 'students' ? 'active' : ''}
-          onClick={() => setActiveTab('students')}
+          onClick={() => {
+            setActiveTab('students');
+            setSearchTerm('');
+          }}
         >
-          Registered Students
+          Registered Students ({students.length})
+        </button>
+        <button 
+          className={activeTab === 'tutors' ? 'active' : ''}
+          onClick={() => {
+            setActiveTab('tutors');
+            setSearchTerm('');
+          }}
+        >
+          Registered Tutors ({tutors.length})
         </button>
         <button 
           className={activeTab === 'gatepasses' ? 'active' : ''}
-          onClick={() => setActiveTab('gatepasses')}
+          onClick={() => {
+            setActiveTab('gatepasses');
+            setSearchTerm('');
+          }}
         >
-          Gate Pass Requests
+          Gate Pass Requests ({gatePasses.length})
         </button>
       </div>
-      
+
       <div className="admin-content">
-        {activeTab === 'students' ? (
-          <div className="students-table">
-            <h2>Registered Students</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Adm No</th>
-                  <th>Name</th>
-                  <th>Department</th>
-                  <th>Semester</th>
-                  <th>Tutor</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.map(student => (
-                  <tr key={student._id}>
-                    <td>{student.admNo}</td>
-                    <td>{student.name}</td>
-                    <td>{student.dept}</td>
-                    <td>{student.sem}</td>
-                    <td>{student.tutorName}</td>
-                    <td>{student.email}</td>
-                    <td>{student.phone}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="gatepasses-table">
-            <h2>Gate Pass Requests</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Adm No</th>
-                  <th>Name</th>
-                  <th>Department</th>
-                  <th>Purpose</th>
-                  <th>Date/Time</th>
-                  <th>Return Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gatePasses.map(pass => (
-                  <tr key={pass._id}>
-                    <td>{pass.admNo}</td>
-                    <td>{pass.name}</td>
-                    <td>{pass.dept}</td>
-                    <td>{pass.purpose}</td>
-                    <td>{new Date(pass.date).toLocaleString()}</td>
-                    <td>{pass.returnTime || 'N/A'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <div className="content-header">
+          <h2>
+            {activeTab === 'students' && 'Registered Students'}
+            {activeTab === 'tutors' && 'Registered Tutors'}
+            {activeTab === 'gatepasses' && 'Gate Pass Requests'}
+          </h2>
+          <input
+            type="text"
+            className="search-box"
+            placeholder={getSearchPlaceholder()}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div className="table-container">
+          {activeTab === 'students' && (
+            <>
+              {filteredStudents.length > 0 ? (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Photo</th>
+                      <th>Adm No</th>
+                      <th>Name</th>
+                      <th>Department</th>
+                      <th>Semester</th>
+                      <th>Tutor</th>
+                      <th>Email</th>
+                      <th>Phone</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredStudents.map(student => (
+                      <tr key={student._id}>
+                        <td className="avatar-cell">
+                          {student.image ? (
+                            <img 
+                              src={`data:image/jpeg;base64,${student.image.toString('base64')}`}
+                              alt={student.name}
+                              className="avatar"
+                            />
+                          ) : (
+                            <div className="avatar" style={{
+                              background: '#e2e8f0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#666',
+                              fontSize: '12px'
+                            }}>
+                              No Image
+                            </div>
+                          )}
+                        </td>
+                        <td>{student.admNo}</td>
+                        <td>{student.name}</td>
+                        <td>{student.dept}</td>
+                        <td>{student.sem}</td>
+                        <td>{student.tutorName}</td>
+                        <td>{student.email}</td>
+                        <td>{student.phone}</td>
+                        <td>
+                          <span className={`status-badge ${student.verified ? 'status-active' : 'status-pending'}`}>
+                            {student.verified ? 'Verified' : 'Pending'}
+                          </span>
+                        </td>
+                        <td className="actions-cell">
+                          <button className="action-btn view-btn">View</button>
+                          <button className="action-btn edit-btn">Edit</button>
+                          <button className="action-btn delete-btn">Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-state">
+                  <h3>No Students Found</h3>
+                  <p>No students match your search criteria.</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'tutors' && (
+            <>
+              {filteredTutors.length > 0 ? (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Photo</th>
+                      <th>Employee ID</th>
+                      <th>Name</th>
+                      <th>Department</th>
+                      <th>Email</th>
+                      <th>Students Count</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTutors.map(tutor => (
+                      <tr key={tutor._id}>
+                        <td className="avatar-cell">
+                          {tutor.image ? (
+                            <img 
+                              src={`data:image/jpeg;base64,${tutor.image.toString('base64')}`}
+                              alt={tutor.name}
+                              className="avatar"
+                            />
+                          ) : (
+                            <div className="avatar" style={{
+                              background: '#e2e8f0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#666',
+                              fontSize: '12px'
+                            }}>
+                              No Image
+                            </div>
+                          )}
+                        </td>
+                        <td>{tutor.empId}</td>
+                        <td>{tutor.name}</td>
+                        <td>{tutor.dept}</td>
+                        <td>{tutor.email}</td>
+                        <td>
+                          {students.filter(s => s.tutorName === tutor.name).length}
+                        </td>
+                        <td>
+                          <span className="status-badge status-active">
+                            Active
+                          </span>
+                        </td>
+                        <td className="actions-cell">
+                          <button className="action-btn view-btn">View</button>
+                          <button className="action-btn edit-btn">Edit</button>
+                          <button className="action-btn delete-btn">Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-state">
+                  <h3>No Tutors Found</h3>
+                  <p>No tutors match your search criteria.</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'gatepasses' && (
+            <>
+              {filteredGatePasses.length > 0 ? (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Adm No</th>
+                      <th>Name</th>
+                      <th>Department</th>
+                      <th>Purpose</th>
+                      <th>Date/Time</th>
+                      <th>Return Time</th>
+                      <th>Tutor</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredGatePasses.map(pass => (
+                      <tr key={pass._id}>
+                        <td>{pass.admNo}</td>
+                        <td>{pass.name}</td>
+                        <td>{pass.dept}</td>
+                        <td>{pass.purpose}</td>
+                        <td>{new Date(pass.date).toLocaleString()}</td>
+                        <td>{pass.returnTime || 'N/A'}</td>
+                        <td>{pass.tutorName}</td>
+                        <td>
+                          <span className={`status-badge ${
+                            pass.status === 'approved' ? 'status-active' :
+                            pass.status === 'rejected' ? 'status-inactive' : 'status-pending'
+                          }`}>
+                            {pass.status || 'Pending'}
+                          </span>
+                        </td>
+                        <td className="actions-cell">
+                          <button className="action-btn view-btn">View</button>
+                          <button className="action-btn edit-btn">Approve</button>
+                          <button className="action-btn delete-btn">Reject</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-state">
+                  <h3>No Gate Passes Found</h3>
+                  <p>No gate pass requests match your search criteria.</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
