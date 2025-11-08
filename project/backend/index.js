@@ -332,101 +332,181 @@ app.post('/gatepasses', async (req, res) => {
 });
 
 // Tutor registration route
+/ Tutor registration
+
 app.post('/tutor/register', upload.single('image'), async (req, res) => {
   try {
-    
-    console.log("Tutor registration request received");
-    console.log("Request body:", req.body);
-    console.log("File:", req.file);
-
     const { empId, name, dept, email, password } = req.body;
 
-     if (!empId || !name || !dept || !email || !password) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    if (!empId || !name || !dept || !email || !password) {
+      return res.status(400).json({ message: 'All fields are required' });
     }
 
-    // Check if tutor already exists
-    const existingTutor = await Tutor.findOne({ empId });
+    // Check if tutor already exists by empId or email
+    const existingTutor = await Tutor.findOne({
+      $or: [{ empId }, { email }]
+    });
+
     if (existingTutor) {
-      return res.status(400).json({ message: 'Tutor with this employee ID already exists' });
+      return res.status(400).json({ message: 'Tutor with this Employee ID or Email already exists' });
     }
 
-     const existingEmail = await Tutor.findOne({ email });
-    if (existingEmail) {
-      console.log("Tutor already exists with email:", email);
-      return res.status(400).json({ 
-        message: 'Tutor with this email already exists' 
-      });
-    }
+    // Hash password (consistent with Student)
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+    // Save the tutor
     const tutor = new Tutor({
-      empId: empId.trim(),
-      name: name.trim(),
-      dept: dept.trim(),
-      email: email.trim(),
-      password: password,
-      image: req.file ? req.file.buffer : null,
+      empId,
+      name,
+      dept,
+      email,
+      password: hashedPassword,  // Store hashed password
+      image: req.file ? req.file.buffer : undefined,
+      verified: false,  // Needs admin approval
+      status: 'pending'  // Add status for consistency with admin routes
     });
 
-    console.log("Saving tutor to database...");
     await tutor.save();
-    console.log("Tutor saved successfully");
-
-    res.status(201).json({ 
-      message: 'Tutor registered successfully', 
-      tutorId: tutor._id 
-    });
-    
+    res.json({ message: 'Tutor registered successfully and awaiting admin verification' });
   } catch (error) {
-    console.error('Tutor registration error details:', error);
-    res.status(500).json({ 
-      message: 'Tutor registration failed', 
-      error: error.message,
-      stack: error.stack // Include stack trace for debugging
-    });
-  } 
+    console.error('Tutor registration error:', error);
+    res.status(500).json({ message: 'Tutor registration failed', error: error.message });
+  }
 });
 
-// Tutor login route
 app.post('/tutor/login', async (req, res) => {
-  const { empId, password } = req.body;
-  console.log("Tutor login attempt with:", empId, password);
+  try {
+    const { empId, password } = req.body;
 
-  const tutor = await Tutor.findOne({ empId, password });
-  if (tutor) {
-    res.send({ message: 'Login successful', tutor });
-  } else {
-    res.status(401).send({ message: 'Invalid credentials' });
+    console.log("🔍 Login attempt:", empId, password);
+
+    if (!empId || !password) {
+      return res.status(400).json({ message: 'Employee ID and password are required' });
+    }
+
+    // Check if tutor exists (debugging)
+    const tutor = await Tutor.findOne({ empId });
+    console.log("Tutor found in DB:", tutor);
+
+    if (!tutor) {
+      return res.status(401).json({ message: 'Tutor not found' });
+    }
+
+    // Compare password using bcrypt (consistent with Student)
+    if (!(await bcrypt.compare(password, tutor.password))) {
+      console.log("Password mismatch");
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Check if verified
+    if (!tutor.verified) {
+      console.log("Tutor not verified");
+      return res.status(403).json({ message: 'Your account is pending admin approval' });
+    }
+
+    // Success
+    console.log("✅ Login success for tutor:", tutor.name);
+    res.json({
+      message: 'Login successful',
+      tutor: {
+        _id: tutor._id,
+        name: tutor.name,
+        empId: tutor.empId,
+        dept: tutor.dept,
+        email: tutor.email
+      }
+    });
+  } catch (error) {
+    console.error('Tutor login error:', error);
+    res.status(500).json({ message: 'Server error during login' });
   }
 });
 
 // Get tutor by ID
 app.get('/tutor/:id', async (req, res) => {
   try {
+    const tutor = await Tutor.findById(req.params.id)
+    if (!tutor) {
+      return res.status(404).json({ message: 'Tutor not found' })
+    }
+    res.json(tutor)
+  } catch (error) {
+    console.error('Error fetching tutor:', error)
+    res.status(500).json({ message: 'Error fetching tutor', error: error.message })
+  }
+})
+
+
+// Get approved gate passes for a tutor's students
+app.get('/tutor/:id/approved-passes', async (req, res) => {
+  try {
     const tutor = await Tutor.findById(req.params.id);
     if (!tutor) {
-      return res.status(404).send({ message: 'Tutor not found' });
+      return res.status(404).json({ message: 'Tutor not found' });
     }
-    res.send(tutor);
+    
+    // Find all students with this tutor
+    const students = await Student.find({ tutorName: tutor.name });
+    const studentIds = students.map(s => s._id);
+    
+    // Find approved passes for these students, sorted by date
+    const passes = await GatePass.find({ 
+      studentId: { $in: studentIds },
+      status: 'approved'
+    })
+    .populate('studentId', 'name admNo dept sem')
+    .sort({ createdAt: -1 });
+    
+    // Format the response with more details
+    const formattedPasses = passes.map(pass => {
+      const student = pass.studentId;
+      return {
+        _id: pass._id,
+        purpose: pass.purpose,
+        date: pass.date,
+        returnTime: pass.returnTime,
+        groupMembers: pass.groupMembers,
+        createdAt: pass.createdAt,
+        approvedAt: pass.approvedAt,
+        studentName: student.name,
+        studentAdmNo: student.admNo,
+        studentDept: student.dept,
+        studentSem: student.sem,
+        studentId: student._id
+      };
+    });
+    
+    res.json(formattedPasses);
   } catch (error) {
-    res.status(500).send({ message: 'Error fetching tutor', error });
+    console.error('Error fetching approved passes:', error);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message
+    });
   }
 });
+
+
 
 // Get students under a tutor
 app.get('/tutor/:id/students', async (req, res) => {
   try {
-    const tutor = await Tutor.findById(req.params.id);
+    const tutor = await Tutor.findById(req.params.id)
     if (!tutor) {
-      return res.status(404).send({ message: 'Tutor not found' });
+      return res.status(404).json({ message: 'Tutor not found' })
     }
     
-    const students = await Student.find({ tutorName: tutor.name });
-    res.send(students);
+    const students = await Student.find({ tutorName: tutor.name })
+    res.json(students)
   } catch (error) {
-    res.status(500).send({ message: 'Error fetching students', error });
+    console.error('Error fetching students:', error)
+    res.status(500).json({ message: 'Error fetching students', error: error.message })
   }
-});
+})
+
+
+
 
 // Approve/reject gate pass
 app.post('/tutor/gatepass/:id/approve', async (req, res) => {
@@ -608,3 +688,4 @@ app.put('/admin/gate-passes/:id/status', async (req, res) => {
 app.listen(5000, () => {
   console.log("Port is running ")
 });
+
